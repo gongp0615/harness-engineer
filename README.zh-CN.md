@@ -130,4 +130,4 @@ npm run harness -- doctor
 node scripts/cli.js verify
 ```
 
-这个仓库现在只面向 **CodeBuddy**，不维护 Codex 插件兼容。
+这个仓库是 **CodeBuddy 专用插件包**，不是跨平台兼容插件包。
