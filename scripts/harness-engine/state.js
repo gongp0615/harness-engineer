@@ -97,7 +97,7 @@ function initProject(projectRoot, options = {}) {
   const paths = statePaths(projectRoot);
   fs.mkdirSync(paths.root, { recursive: true });
   fs.mkdirSync(paths.verifyCache, { recursive: true });
-  ensureHarnessConfig(projectRoot, options);
+  const config = ensureHarnessConfig(projectRoot, options);
 
   const existing = readTask(projectRoot);
   const task = existing || createTask(projectRoot, { title: "Initialized Harness task" });
@@ -108,7 +108,7 @@ function initProject(projectRoot, options = {}) {
     writeJson(paths.evidence, emptyEvidence(task.task_id));
   }
   writeIfMissing(paths.hooks, "");
-  return { ok: true, project_root: projectRoot, harness_dir: paths.root, task };
+  return { ok: true, project_root: projectRoot, harness_dir: paths.root, task, ci_workflow_path: config.ci_workflow_path };
 }
 
 function emptyEvidence(taskId = null) {

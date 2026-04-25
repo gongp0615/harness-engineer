@@ -23,3 +23,23 @@ test("install copies plugin into a local CodeBuddy marketplace and enables it", 
   assert.equal(settings.extraKnownMarketplaces["harness-engineer-local"].source.path, result.marketplace_dir);
   assert.equal(settings.enabledPlugins["harness-engineer@harness-engineer-local"], true);
 });
+
+test("install script skips CI setup in non-interactive mode", () => {
+  const source = path.join(__dirname, "..");
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), "harness-install-project-"));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "harness-install-home-"));
+  const result = require("node:child_process").spawnSync("bash", [path.join(source, "install.sh")], {
+    cwd: project,
+    env: {
+      ...process.env,
+      CODEBUDDY_HOME: home,
+      HARNESS_BIN_DIR: path.join(home, ".local", "bin")
+    },
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(fs.existsSync(path.join(project, ".github", "workflows", "harness.yml")), false);
+  assert.match(result.stdout, /Skipped GitHub Actions CI workflow setup/);
+});

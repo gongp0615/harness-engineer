@@ -36,3 +36,20 @@ else
   "$HOME/.local/bin/harness" doctor
   echo "Add \$HOME/.local/bin to PATH to use the 'harness' command directly."
 fi
+
+enable_ci="${HARNESS_INSTALL_ENABLE_CI:-}"
+if [ -z "$enable_ci" ] && [ -t 0 ]; then
+  printf "Enable Harness GitHub Actions CI workflow in the current directory? [y/N] "
+  read -r answer || answer=""
+  case "$answer" in
+    y|Y|yes|YES) enable_ci="1" ;;
+    *) enable_ci="0" ;;
+  esac
+fi
+
+if [ "$enable_ci" = "1" ]; then
+  node "$source_dir/scripts/cli.js" init --profile "${HARNESS_INIT_PROFILE:-node}" --with-ci
+  echo "Created .github/workflows/harness.yml in the current directory."
+else
+  echo "Skipped GitHub Actions CI workflow setup. Run 'harness init --profile node --with-ci' later to enable it."
+fi

@@ -53,6 +53,8 @@ From a local checkout:
 bash install.sh
 ```
 
+During interactive installation, the script asks whether to enable a Harness GitHub Actions workflow in the current directory. Answering yes runs `harness init --profile node --with-ci` and creates `.github/workflows/harness.yml`. Non-interactive installs skip this step unless `HARNESS_INSTALL_ENABLE_CI=1` is set.
+
 The installer writes a local CodeBuddy marketplace to:
 
 ```text
@@ -190,6 +192,8 @@ curl -fsSL https://raw.githubusercontent.com/gongp0615/harness-for-codebuddy/ref
 bash install.sh
 ```
 
+交互式安装时，脚本会询问是否要在当前目录启用 Harness GitHub Actions CI。选择 yes 会运行 `harness init --profile node --with-ci` 并创建 `.github/workflows/harness.yml`。非交互安装默认跳过；如果要自动启用，可以设置 `HARNESS_INSTALL_ENABLE_CI=1`。
+
 安装器会写入本地 CodeBuddy marketplace：
 
 ```text
@@ -228,6 +232,12 @@ harness init --profile node
 
 ```bash
 harness init --profile generic
+```
+
+如果要同时启用 GitHub Actions CI：
+
+```bash
+harness init --profile node --with-ci
 ```
 
 运行默认验证 profile：

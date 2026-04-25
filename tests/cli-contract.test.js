@@ -64,3 +64,12 @@ test("status returns empty task state before initialization", () => {
   assert.equal(result.code, 0);
   assert.equal(JSON.parse(result.stdout).task, null);
 });
+
+test("init --with-ci creates the GitHub Actions workflow from the template", () => {
+  const root = tempProject();
+  const result = capture(() => runCli(["init", "--profile", "node", "--with-ci"], root));
+
+  assert.equal(result.code, 0);
+  assert.equal(JSON.parse(result.stdout).ci_workflow_path.endsWith(".github/workflows/harness.yml"), true);
+  assert.equal(fs.existsSync(path.join(root, ".github", "workflows", "harness.yml")), true);
+});

@@ -23,7 +23,10 @@ function runCli(argv = process.argv.slice(2), cwd = process.cwd()) {
       return 0;
     }
     if (command === "init") {
-      printJson(initProject(cwd, { profile: parseOption(argv, "--profile") || "generic" }));
+      printJson(initProject(cwd, {
+        profile: parseOption(argv, "--profile") || "generic",
+        enableCi: hasFlag(argv, "--with-ci") || hasFlag(argv, "--ci")
+      }));
       return 0;
     }
     if (command === "plan") {
@@ -87,6 +90,10 @@ function parseOption(argv, name) {
   if (index === -1) return undefined;
   if (!argv[index + 1]) throw new Error(`${name} requires a value`);
   return argv[index + 1];
+}
+
+function hasFlag(argv, name) {
+  return argv.includes(name);
 }
 
 function positionalText(args) {

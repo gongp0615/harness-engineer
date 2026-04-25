@@ -2,6 +2,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { pluginRoot } = require("../paths");
 
 const DEFAULT_SHELL_POLICY = {
   block: [
@@ -76,6 +77,41 @@ function ensureHarnessConfig(projectRoot, options = {}) {
   writeIfMissing(path.join(projectRoot, "harness", "templates", "plan.md"), "# Plan\n\n## Task\n\n## Steps\n\n## Verification\n");
   writeIfMissing(path.join(projectRoot, "harness", "templates", "evidence.md"), "# Evidence\n\n## Verification\n\n## Risks\n");
   writeIfMissing(path.join(projectRoot, "harness", "templates", "risk.md"), "# Risks\n\n- None recorded.\n");
+  if (options.enableCi) {
+    return { ci_workflow_path: enableCiWorkflow(projectRoot) };
+  }
+  return { ci_workflow_path: null };
+}
+
+function enableCiWorkflow(projectRoot) {
+  const targetPath = path.join(projectRoot, ".github", "workflows", "harness.yml");
+  const templatePath = path.join(pluginRoot(), "docs", "ai-engineering", "github-actions-harness.yml");
+  const fallback = [
+    "name: Harness Verification",
+    "",
+    "on:",
+    "  pull_request:",
+    "  workflow_dispatch:",
+    "",
+    "jobs:",
+    "  harness:",
+    "    runs-on: ubuntu-latest",
+    "    steps:",
+    "      - uses: actions/checkout@v4",
+    "      - uses: actions/setup-node@v4",
+    "        with:",
+    "          node-version: 20",
+    "      - run: npm install",
+    "      - run: npm run harness -- verify --profile ci",
+    "      - uses: actions/upload-artifact@v4",
+    "        if: always()",
+    "        with:",
+    "          name: harness-engineer-evidence",
+    "          path: .harness-engineer/"
+  ].join("\n");
+  const content = fs.existsSync(templatePath) ? fs.readFileSync(templatePath, "utf8") : `${fallback}\n`;
+  writeIfMissing(targetPath, content);
+  return targetPath;
 }
 
 function writeIfMissing(filePath, content) {
@@ -122,5 +158,6 @@ module.exports = {
   DEFAULT_APPROVAL_POLICY,
   DEFAULT_FILE_SCOPE,
   DEFAULT_SHELL_POLICY,
+  enableCiWorkflow,
   ensureHarnessConfig
 };

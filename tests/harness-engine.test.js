@@ -29,6 +29,17 @@ test("initProject creates harness state and configuration templates", () => {
   const current = status(root);
   assert.equal(current.task.status, "NEW");
   assert.equal(current.state.active_task_id, current.task.task_id);
+  assert.equal(fs.existsSync(path.join(root, ".github", "workflows", "harness.yml")), false);
+});
+
+test("initProject can explicitly enable GitHub Actions CI workflow", () => {
+  const root = tempProject();
+  const result = initProject(root, { profile: "node", enableCi: true });
+  const workflowPath = path.join(root, ".github", "workflows", "harness.yml");
+
+  assert.equal(result.ci_workflow_path, workflowPath);
+  assert.equal(fs.existsSync(workflowPath), true);
+  assert.match(fs.readFileSync(workflowPath, "utf8"), /Harness Verification/);
 });
 
 test("planTask records task metadata and recover suggests verification", () => {
