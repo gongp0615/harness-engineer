@@ -7,7 +7,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const { initProject, planTask, recover, status, evidenceSummary } = require("../scripts/harness-engine/state");
-const { runProfile } = require("../scripts/harness-engine/profile-runner");
+const { inspectProfile, listProfiles, runProfile } = require("../scripts/harness-engine/profile-runner");
 const { evaluatePolicy } = require("../scripts/harness-engine/policy");
 
 function tempProject(name = "harness-engine-") {
@@ -106,6 +106,60 @@ test("runProfile records failed required step and failed verification state", ()
   assert.equal(result.ok, false);
   assert.equal(result.evidence.status, "FAILED_VERIFICATION");
   assert.equal(status(root).task.status, "FAILED_VERIFICATION");
+});
+
+test("runProfile fails empty profiles without passing verification", () => {
+  const root = tempProject();
+  initProject(root);
+  fs.writeFileSync(path.join(root, "harness", "profiles", "default.yaml"), "name: default\nsteps: []\n");
+
+  const result = runProfile(root, { profile: "default" });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.evidence.status, "NO_VERIFICATION_STEPS");
+  assert.equal(status(root).task.status, "NO_VERIFICATION_STEPS");
+  assert.match(result.evidence.risks.join("\n"), /no executable verification steps/i);
+});
+
+test("runProfile fails optional-only profiles", () => {
+  const root = tempProject();
+  initProject(root);
+  fs.writeFileSync(
+    path.join(root, "harness", "profiles", "default.yaml"),
+    [
+      "name: default",
+      "steps:",
+      "  - name: optional",
+      "    command: node -e \"process.exit(0)\"",
+      "    required: false"
+    ].join("\n")
+  );
+
+  const result = runProfile(root, { profile: "default" });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.evidence.status, "NO_VERIFICATION_STEPS");
+  assert.equal(result.inspection.required_step_count, 0);
+});
+
+test("profile inspection reports configured profile readiness", () => {
+  const root = tempProject();
+  initProject(root);
+  fs.writeFileSync(
+    path.join(root, "harness", "profiles", "default.yaml"),
+    [
+      "name: default",
+      "steps:",
+      "  - name: required",
+      "    command: node -e \"process.exit(0)\"",
+      "    required: true"
+    ].join("\n")
+  );
+
+  const inspection = inspectProfile(root, "default");
+  assert.equal(inspection.ready, true);
+  assert.equal(inspection.required_step_count, 1);
+  assert.equal(listProfiles(root).profiles.some((profile) => profile.name === "default"), true);
 });
 
 test("evaluatePolicy reads policy files for block, warn, approval, and file scope", () => {

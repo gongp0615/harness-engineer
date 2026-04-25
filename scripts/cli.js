@@ -9,7 +9,7 @@ const { discoverVerificationCommands } = require("./harness-engine/verification-
 const { evidenceSummary, initProject, planTask, recover, status } = require("./harness-engine/state");
 const { runAutonomous } = require("./harness-engine/orchestrator");
 const { evaluatePolicy } = require("./harness-engine/policy");
-const { legacyVerify, runProfile } = require("./harness-engine/profile-runner");
+const { inspectProfile, legacyVerify, listProfiles, runProfile } = require("./harness-engine/profile-runner");
 
 function runCli(argv = process.argv.slice(2), cwd = process.cwd()) {
   const command = argv[0] || "status";
@@ -46,10 +46,27 @@ function runCli(argv = process.argv.slice(2), cwd = process.cwd()) {
       const result = runAutonomous(cwd, {
         task: parseOption(argv, "--task") || positionalText(argv.slice(1)),
         profile: parseOption(argv, "--profile") || "default",
-        maxRounds: parseOption(argv, "--max-rounds") || "5"
+        maxRounds: parseOption(argv, "--max-rounds") || "5",
+        dryRun: hasFlag(argv, "--dry-run"),
+        resume: hasFlag(argv, "--resume")
       });
       printJson(result);
       return result.ok ? 0 : 1;
+    }
+    if (command === "profile") {
+      const subcommand = argv[1] || "list";
+      if (subcommand === "list") {
+        printJson(listProfiles(cwd));
+        return 0;
+      }
+      if (subcommand === "show" || subcommand === "doctor") {
+        const name = argv[2] || parseOption(argv, "--profile") || "default";
+        const result = inspectProfile(cwd, name);
+        printJson(result);
+        return subcommand === "doctor" && !result.ready ? 1 : 0;
+      }
+      process.stderr.write(`Unknown harness profile command: ${subcommand}\n`);
+      return 2;
     }
     if (command === "status") {
       printJson(status(cwd));
@@ -78,7 +95,7 @@ function runCli(argv = process.argv.slice(2), cwd = process.cwd()) {
       printJson({
         plugin_root: pluginRoot(),
         project_root: cwd,
-        commands: ["doctor", "install", "uninstall", "init", "plan", "run", "status", "verify", "recover", "evidence", "policy-check"],
+        commands: ["doctor", "install", "uninstall", "init", "plan", "run", "profile", "status", "verify", "recover", "evidence", "policy-check"],
         state_file: path.join(cwd, ".harness-engineer", "task.json")
       });
       return 0;

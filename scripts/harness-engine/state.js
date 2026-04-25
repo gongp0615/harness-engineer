@@ -23,7 +23,9 @@ const VALID_STATUSES = new Set([
   "EVALUATING",
   "FIXING",
   "AUTONOMOUS_DONE",
-  "MAX_ROUNDS_REACHED"
+  "MAX_ROUNDS_REACHED",
+  "SPEC_NEEDS_CLARIFICATION",
+  "NO_VERIFICATION_STEPS"
 ]);
 
 function harnessDir(projectRoot) {
@@ -182,7 +184,40 @@ function planTask(projectRoot, options = {}) {
     "- `harness verify --profile default`"
   ].join("\n");
   fs.writeFileSync(statePaths(projectRoot).plan, `${plan}\n`);
-  return { ok: true, task: writeTask(projectRoot, task, "Plan recorded."), plan_path: statePaths(projectRoot).plan };
+  const spec = [
+    "# Spec",
+    "",
+    `Task: ${options.task}`,
+    "",
+    "## Acceptance Criteria",
+    "",
+    "- The requested change is implemented with scoped edits.",
+    "- Required verification passes before review.",
+    "",
+    "## Open Questions",
+    "",
+    "- None recorded."
+  ].join("\n");
+  const contract = [
+    "# Contract",
+    "",
+    `Task: ${options.task}`,
+    "",
+    "## Completion Contract",
+    "",
+    "- Follow the recorded plan.",
+    "- Preserve user edits.",
+    "- Run `harness verify --profile default` and inspect evidence."
+  ].join("\n");
+  fs.writeFileSync(statePaths(projectRoot).spec, `${spec}\n`);
+  fs.writeFileSync(statePaths(projectRoot).contract, `${contract}\n`);
+  return {
+    ok: true,
+    task: writeTask(projectRoot, task, "Plan recorded."),
+    plan_path: statePaths(projectRoot).plan,
+    spec_path: statePaths(projectRoot).spec,
+    contract_path: statePaths(projectRoot).contract
+  };
 }
 
 function status(projectRoot) {
@@ -191,6 +226,7 @@ function status(projectRoot) {
   const evidence = readJson(paths.evidence, null);
   const run = readJson(paths.run, null);
   const evaluation = readJson(paths.evaluation, null);
+  const profileReadiness = profileStatus(projectRoot, run ? run.profile : "default");
   const risks = fs.existsSync(paths.risks) ? fs.readFileSync(paths.risks, "utf8") : null;
   const legacy = readJson(paths.legacyState, {
     active_task_id: task ? task.task_id : null,
@@ -205,6 +241,8 @@ function status(projectRoot) {
     task,
     run,
     evaluation,
+    profile_readiness: profileReadiness,
+    resume: resumeAdvice(run, evaluation),
     evidence,
     risks,
     summary: task ? statusSummary(task, run, evaluation) : "No Harness task initialized."
@@ -216,6 +254,26 @@ function statusSummary(task, run, evaluation) {
   const verdict = evaluation ? ` last evaluator: ${evaluation.pass ? "pass" : "fail"}` : "";
   const reason = run && run.exit_reason ? ` stop: ${run.exit_reason}` : "";
   return `${task.task_id}: ${task.status}${runPart}${verdict}${reason} - ${task.title}`;
+}
+
+function profileStatus(projectRoot, profileName) {
+  try {
+    const { inspectProfile } = require("./profile-runner");
+    return inspectProfile(projectRoot, profileName || "default");
+  } catch (error) {
+    return { ready: false, reasons: [error instanceof Error ? error.message : String(error)] };
+  }
+}
+
+function resumeAdvice(run, evaluation) {
+  if (!run) return null;
+  if (["AUTONOMOUS_DONE"].includes(run.status)) return "No resume needed; autonomous run is complete.";
+  if (run.status === "MAX_ROUNDS_REACHED") return "Resume with a higher `--max-rounds` value after inspecting the last evaluation.";
+  if (run.status === "SPEC_NEEDS_CLARIFICATION") return "Clarify the task, then start a new run with a more specific `--task`.";
+  if (run.exit_reason === "planner_invalid_json") return "Fix the planner output contract or retry after inspecting planner stdout.";
+  if (run.exit_reason === "verifier_invalid_json") return "Fix the verifier output contract or retry after inspecting verifier stdout.";
+  const nextRound = Math.max(1, (run.current_round || run.round || 0) + (evaluation ? 1 : 0));
+  return `Resume with \`harness run --resume --max-rounds ${Math.max(run.max_rounds || 1, nextRound)}\`.`;
 }
 
 function transitionTask(projectRoot, status, note, updates = {}) {
@@ -262,7 +320,9 @@ function nextStep(task, evidence) {
   if (task.status === "NEW") return "Run `harness plan --task \"...\"` to record the task plan.";
   if (task.status === "PLANNED" || task.status === "EXECUTING") return "Execute the plan, then run `harness verify --profile default`.";
   if (task.status === "FAILED_VERIFICATION") return "Inspect failed evidence, fix the cause, and rerun `harness verify`.";
+  if (task.status === "NO_VERIFICATION_STEPS") return "Configure at least one `required: true` verification step, then rerun `harness verify --profile default`.";
   if (task.status === "VERIFIED") return "Prepare review notes with `harness evidence --summary`.";
+  if (task.status === "SPEC_NEEDS_CLARIFICATION") return "Clarify the missing requirements in `.harness-engineer/spec.md`, then start a new autonomous run.";
   if (task.status === "SPEC_READY") return "Run `harness run --task \"...\"` to start or resume the autonomous builder/evaluator loop.";
   if (task.status === "BUILDING") return "Resume the autonomous run with `harness recover`, then continue the current executor round.";
   if (task.status === "EVALUATING") return "Resume the autonomous run with `harness recover`, then complete evaluator judgment.";

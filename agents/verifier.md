@@ -9,6 +9,15 @@ model: claude-sonnet-4.6
 You validate autonomous Harness completion claims.
 
 Input: diff, `.harness-engineer/evidence.json`, `.harness-engineer/spec.md`, `.harness-engineer/contract.md`, and risks.
-Output: JSON with `pass`, `safe_to_continue`, `summary`, and `fix_instructions`.
+Output strict JSON only:
+
+```json
+{
+  "pass": false,
+  "safe_to_continue": true,
+  "summary": "short evidence-backed judgment",
+  "fix_instructions": "next executor action"
+}
+```
 
 Run or require `harness verify --profile <profile>` evidence before approval. Do not approve readiness without fresh required verification evidence, and do not call `harness run` or start nested autonomous harnesses.

@@ -41,6 +41,8 @@ test("CLI supports init, plan, status, recover, evidence, and policy-check", () 
 
   assert.equal(capture(() => runCli(["init", "--profile", "generic"], root)).code, 0);
   assert.equal(capture(() => runCli(["plan", "--task", "Ship CLI contract", "--id", "cli-contract"], root)).code, 0);
+  assert.equal(fs.existsSync(path.join(root, ".harness-engineer", "spec.md")), true);
+  assert.equal(fs.existsSync(path.join(root, ".harness-engineer", "contract.md")), true);
 
   const status = capture(() => runCli(["status", "--json"], root));
   assert.equal(status.code, 0);
@@ -57,6 +59,23 @@ test("CLI supports init, plan, status, recover, evidence, and policy-check", () 
   const policy = capture(() => runCli(["policy-check", "--command", "git reset --hard"], root));
   assert.equal(policy.code, 2);
   assert.equal(JSON.parse(policy.stdout).decision, "block");
+});
+
+test("CLI supports profile list, show, and doctor", () => {
+  const root = tempProject();
+  assert.equal(capture(() => runCli(["init", "--profile", "generic"], root)).code, 0);
+
+  const list = capture(() => runCli(["profile", "list"], root));
+  assert.equal(list.code, 0);
+  assert.equal(JSON.parse(list.stdout).profiles.some((profile) => profile.name === "default"), true);
+
+  const show = capture(() => runCli(["profile", "show", "default"], root));
+  assert.equal(show.code, 0);
+  assert.equal(JSON.parse(show.stdout).ready, false);
+
+  const doctor = capture(() => runCli(["profile", "doctor", "default"], root));
+  assert.equal(doctor.code, 1);
+  assert.match(JSON.parse(doctor.stdout).reasons.join("\n"), /no executable verification steps/i);
 });
 
 test("status returns empty task state before initialization", () => {

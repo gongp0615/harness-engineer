@@ -4,31 +4,32 @@ const fs = require("node:fs");
 const path = require("node:path");
 const cp = require("node:child_process");
 const { readJson, writeJson } = require("../paths");
-const { runProfile } = require("./profile-runner");
+const { inspectProfile, runProfile } = require("./profile-runner");
 const { initProject, statePaths, transitionTask } = require("./state");
 
 const DEFAULT_MAX_ROUNDS = 5;
 const HEADLESS_ARGS = ["-y", "--permission-mode", "bypassPermissions", "--subagent-permission-mode", "bypassPermissions"];
 
 function runAutonomous(projectRoot, options = {}) {
+  if (options.resume) return resumeAutonomousRun(projectRoot, options);
   if (!options.task || !options.task.trim()) throw new Error("run requires --task <text>");
-  const maxRounds = parseMaxRounds(options.maxRounds);
-  const profile = options.profile || "default";
-  const executable = findCodeBuddyExecutable(options);
-  if (!executable) throw new Error("CodeBuddy CLI not found. Install `codebuddy` or `cbc`, or set CODEBUDDY_BIN.");
+  const prepared = prepareAutonomousRun(projectRoot, options);
+  if (options.dryRun) return dryRunAutonomous(projectRoot, prepared);
+  if (!prepared.profile.ready) return notReadyResult(projectRoot, prepared);
+  if (!prepared.executable) throw new Error("CodeBuddy CLI not found. Install `codebuddy` or `cbc`, or set CODEBUDDY_BIN.");
 
   initProject(projectRoot);
   const paths = statePaths(projectRoot);
   fs.mkdirSync(paths.root, { recursive: true });
 
-  const run = createRun(options.task.trim(), profile, maxRounds, executable);
+  const run = createRun(prepared.task, prepared.profile.name, prepared.maxRounds, prepared.executable);
   writeRun(projectRoot, run);
 
   transitionTask(projectRoot, "SPEC_READY", "Autonomous run started; planner is preparing the spec.", {
-    title: options.task.trim(),
+    title: prepared.task,
     current_step: "Planner spec"
   });
-  const planner = invokeCodeBuddy(executable, "planner", plannerPrompt(options.task.trim(), profile, maxRounds), projectRoot);
+  const planner = invokeCodeBuddy(prepared.executable, "planner", plannerPrompt(prepared.task, prepared.profile.name, prepared.maxRounds), projectRoot);
   run.planner = planner;
   run.agent_outputs.push(agentOutput("planner", 0, planner));
   if (agentFailed(planner)) {
@@ -39,19 +40,128 @@ function runAutonomous(projectRoot, options = {}) {
     transitionTask(projectRoot, "INTERRUPTED", "Planner headless CodeBuddy call failed.", { current_step: "Inspect planner output" });
     return result(projectRoot, run, null, null);
   }
-  writeText(paths.spec, planner.stdout || fallbackSpec(options.task.trim(), profile));
-  writeText(paths.contract, initialContract(options.task.trim(), profile, maxRounds, planner.stdout));
-  writeRun(projectRoot, run);
 
-  let lastEvaluation = null;
-  for (let round = 1; round <= maxRounds; round += 1) {
+  let plannerContract;
+  try {
+    plannerContract = parseJsonObjectStrict(planner.stdout, "planner");
+    validatePlannerContract(plannerContract);
+  } catch {
+    run.exit_reason = "planner_invalid_json";
+    run.finished_at = now();
+    run.status = "INTERRUPTED";
+    writeRun(projectRoot, run);
+    transitionTask(projectRoot, "INTERRUPTED", "Planner returned invalid JSON.", { current_step: "Inspect planner output" });
+    return result(projectRoot, run, null, null);
+  }
+
+  writeText(paths.spec, plannerContract.spec_markdown || fallbackSpec(prepared.task, prepared.profile.name));
+  writeText(paths.contract, plannerContract.contract_markdown || initialContract(prepared.task, prepared.profile.name, prepared.maxRounds, planner.stdout));
+  run.planner_contract = plannerContract;
+  if (plannerContract.ready_to_execute !== true) {
+    run.exit_reason = "spec_needs_clarification";
+    run.finished_at = now();
+    run.status = "SPEC_NEEDS_CLARIFICATION";
+    writeRun(projectRoot, run);
+    transitionTask(projectRoot, "SPEC_NEEDS_CLARIFICATION", "Planner reported missing requirements; autonomous execution did not start.", {
+      current_step: "Clarify requirements"
+    });
+    return result(projectRoot, run, null, null);
+  }
+  writeRun(projectRoot, run);
+  return executeRounds(projectRoot, run, paths, prepared.task, prepared.profile.name, prepared.maxRounds, 1, null);
+}
+
+function prepareAutonomousRun(projectRoot, options = {}) {
+  const maxRounds = parseMaxRounds(options.maxRounds);
+  const profileName = options.profile || "default";
+  return {
+    task: options.task ? options.task.trim() : "",
+    maxRounds,
+    profile: inspectProfile(projectRoot, profileName),
+    executable: findCodeBuddyExecutable(options),
+    headless_args: HEADLESS_ARGS,
+    artifacts: statePaths(projectRoot)
+  };
+}
+
+function dryRunAutonomous(projectRoot, prepared) {
+  const ready = Boolean(prepared.task) && prepared.profile.ready && Boolean(prepared.executable);
+  return {
+    ok: ready,
+    ready,
+    project_root: projectRoot,
+    task: prepared.task,
+    profile: prepared.profile,
+    codebuddy_bin: prepared.executable,
+    headless_args: HEADLESS_ARGS,
+    max_rounds: prepared.maxRounds,
+    artifacts: {
+      root: prepared.artifacts.root,
+      run: prepared.artifacts.run,
+      spec: prepared.artifacts.spec,
+      contract: prepared.artifacts.contract,
+      evidence: prepared.artifacts.evidence,
+      evaluation: prepared.artifacts.evaluation
+    },
+    reasons: [
+      ...(!prepared.task ? ["Task is required."] : []),
+      ...prepared.profile.reasons,
+      ...(!prepared.executable ? ["CodeBuddy CLI not found. Install `codebuddy` or `cbc`, or set CODEBUDDY_BIN."] : [])
+    ]
+  };
+}
+
+function notReadyResult(projectRoot, prepared) {
+  return {
+    ok: false,
+    ready: false,
+    project_root: projectRoot,
+    task: prepared.task,
+    profile: prepared.profile,
+    summary: `Profile ${prepared.profile.name} is not ready for autonomous execution.`
+  };
+}
+
+function resumeAutonomousRun(projectRoot, options = {}) {
+  const paths = statePaths(projectRoot);
+  const run = readJson(paths.run, null);
+  if (!run) throw new Error("run --resume requires .harness-engineer/run.json");
+  if (options.task && options.task.trim() && options.task.trim() !== run.task) throw new Error("run --resume cannot change task");
+  const maxRounds = options.maxRounds ? parseMaxRounds(options.maxRounds) : run.max_rounds;
+  if (maxRounds < run.max_rounds) throw new Error("run --resume cannot lower --max-rounds");
+  const profile = inspectProfile(projectRoot, run.profile || options.profile || "default");
+  if (!profile.ready) return notReadyResult(projectRoot, { task: run.task, profile, maxRounds });
+  const executable = findCodeBuddyExecutable({ ...options, codebuddyBin: options.codebuddyBin || run.codebuddy_bin });
+  if (!executable) throw new Error("CodeBuddy CLI not found. Install `codebuddy` or `cbc`, or set CODEBUDDY_BIN.");
+  if (!fs.existsSync(paths.contract)) throw new Error("run --resume requires .harness-engineer/contract.md");
+  run.max_rounds = maxRounds;
+  run.codebuddy_bin = executable;
+  run.status = "RUNNING";
+  run.finished_at = null;
+  run.exit_reason = null;
+  const lastEvaluation = readJson(paths.evaluation, null);
+  const nextRound = Math.max(1, run.rounds.length + 1);
+  if (nextRound > maxRounds) {
+    run.exit_reason = "max_rounds_reached";
+    run.finished_at = now();
+    run.status = "MAX_ROUNDS_REACHED";
+    writeRun(projectRoot, run);
+    return result(projectRoot, run, lastEvaluation, null);
+  }
+  writeRun(projectRoot, run);
+  return executeRounds(projectRoot, run, paths, run.task, run.profile, maxRounds, nextRound, lastEvaluation);
+}
+
+function executeRounds(projectRoot, run, paths, task, profile, maxRounds, startRound, initialEvaluation) {
+  let lastEvaluation = initialEvaluation;
+  for (let round = startRound; round <= maxRounds; round += 1) {
     run.current_round = round;
     run.round = round;
     transitionTask(projectRoot, lastEvaluation && !lastEvaluation.pass ? "FIXING" : "BUILDING", `Autonomous round ${round} started.`, {
       current_step: `Autonomous round ${round}`
     });
 
-    const executor = invokeCodeBuddy(executable, "executor", executorPrompt(projectRoot, options.task.trim(), profile, round, maxRounds, paths, lastEvaluation), projectRoot);
+    const executor = invokeCodeBuddy(run.codebuddy_bin, "executor", executorPrompt(projectRoot, task, profile, round, maxRounds, paths, lastEvaluation), projectRoot);
     run.agent_outputs.push(agentOutput("executor", round, executor));
     const roundRecord = { round, executor };
     writeRun(projectRoot, run);
@@ -69,7 +179,7 @@ function runAutonomous(projectRoot, options = {}) {
       current_step: `Evaluate round ${round}`
     });
     const verification = runProfile(projectRoot, { profile });
-    const verifier = invokeCodeBuddy(executable, "verifier", verifierPrompt(projectRoot, options.task.trim(), profile, round, paths, verification), projectRoot);
+    const verifier = invokeCodeBuddy(run.codebuddy_bin, "verifier", verifierPrompt(projectRoot, task, profile, round, paths, verification), projectRoot);
     run.agent_outputs.push(agentOutput("verifier", round, verifier));
     if (agentFailed(verifier)) {
       run.exit_reason = "verifier_failed";
@@ -83,7 +193,22 @@ function runAutonomous(projectRoot, options = {}) {
       return result(projectRoot, run, lastEvaluation, verification);
     }
 
-    const evaluation = buildEvaluation(round, profile, verification, verifier, lastEvaluation);
+    let evaluation;
+    try {
+      evaluation = buildEvaluation(round, profile, verification, verifier, lastEvaluation);
+    } catch {
+      run.exit_reason = "verifier_invalid_json";
+      run.finished_at = now();
+      run.status = "INTERRUPTED";
+      roundRecord.verification = verification;
+      roundRecord.verifier = verifier;
+      run.rounds.push(roundRecord);
+      writeRun(projectRoot, run);
+      transitionTask(projectRoot, "INTERRUPTED", `Verifier returned invalid JSON in autonomous round ${round}.`, {
+        current_step: "Inspect verifier output"
+      });
+      return result(projectRoot, run, lastEvaluation, verification);
+    }
     lastEvaluation = evaluation;
     roundRecord.verification = verification;
     roundRecord.verifier = verifier;
@@ -114,7 +239,7 @@ function runAutonomous(projectRoot, options = {}) {
       return result(projectRoot, run, evaluation, verification);
     }
 
-    writeText(paths.contract, nextRoundContract(options.task.trim(), profile, round + 1, maxRounds, evaluation));
+    writeText(paths.contract, nextRoundContract(task, profile, round + 1, maxRounds, evaluation));
   }
 
   run.exit_reason = "max_rounds_reached";
@@ -186,10 +311,11 @@ function invokeCodeBuddy(executable, agent, prompt, cwd) {
 }
 
 function buildEvaluation(round, profile, verification, verifier, previousEvaluation) {
-  const parsed = parseJsonObject(verifier.stdout);
+  const parsed = parseJsonObjectStrict(verifier.stdout, "verifier");
   const requiredPassed = Boolean(verification && verification.ok);
-  const verifierPass = typeof parsed.pass === "boolean" ? parsed.pass : undefined;
-  const pass = verifierPass === undefined ? requiredPassed : verifierPass && requiredPassed;
+  if (typeof parsed.pass !== "boolean") throw new Error("verifier JSON missing boolean pass");
+  if (typeof parsed.safe_to_continue !== "boolean") throw new Error("verifier JSON missing boolean safe_to_continue");
+  const pass = parsed.pass && requiredPassed;
   return {
     round,
     profile,
@@ -205,18 +331,22 @@ function buildEvaluation(round, profile, verification, verifier, previousEvaluat
   };
 }
 
-function parseJsonObject(text) {
-  if (!text) return {};
+function validatePlannerContract(parsed) {
+  if (typeof parsed.ready_to_execute !== "boolean") throw new Error("planner JSON missing boolean ready_to_execute");
+  if (!Array.isArray(parsed.missing_requirements)) throw new Error("planner JSON missing missing_requirements array");
+  if (typeof parsed.spec_markdown !== "string") throw new Error("planner JSON missing spec_markdown string");
+  if (typeof parsed.contract_markdown !== "string") throw new Error("planner JSON missing contract_markdown string");
+  if (typeof parsed.summary !== "string") throw new Error("planner JSON missing summary string");
+}
+
+function parseJsonObjectStrict(text, agent) {
+  if (!text) throw new Error(`${agent} returned empty output`);
   try {
-    return JSON.parse(text);
-  } catch {
-    const match = text.match(/\{[\s\S]*\}/);
-    if (!match) return {};
-    try {
-      return JSON.parse(match[0]);
-    } catch {
-      return {};
-    }
+    const parsed = JSON.parse(text);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error(`${agent} JSON must be an object`);
+    return parsed;
+  } catch (error) {
+    throw new Error(`${agent} returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -248,8 +378,10 @@ function plannerPrompt(task, profile, maxRounds) {
     `Verification profile: ${profile}`,
     `Max rounds: ${maxRounds}`,
     "",
-    "Write a complete engineering spec with: task summary, non-goals, acceptance criteria, expected files, verification contract, and risks.",
-    "Do not implement."
+    "Return JSON only with keys: ready_to_execute, missing_requirements, spec_markdown, contract_markdown, summary.",
+    "Set ready_to_execute=false when the task is ambiguous, unsafe, or missing material requirements.",
+    "spec_markdown must include task summary, non-goals, acceptance criteria, expected files, verification contract, and risks.",
+    "contract_markdown must be the executor/verifier contract. Do not implement."
   ].join("\n");
 }
 
@@ -280,7 +412,7 @@ function verifierPrompt(projectRoot, task, profile, round, paths, verification) 
     `Evidence path: ${path.relative(projectRoot, paths.evidence)}`,
     `Contract path: ${path.relative(projectRoot, paths.contract)}`,
     "",
-    "Judge the diff, contract, and evidence. Return JSON only with keys: pass, safe_to_continue, summary, fix_instructions.",
+    "Judge the diff, contract, and evidence. Return strict JSON only with keys: pass, safe_to_continue, summary, fix_instructions.",
     "Only set pass=true when required verification passed and the contract is satisfied."
   ].join("\n");
 }
