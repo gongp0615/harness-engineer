@@ -1,6 +1,6 @@
 # Harness for CodeBuddy
 
-> 中文在前，English below.
+English version: [jump below](#english).
 
 Harness for CodeBuddy 是一个 CodeBuddy Code CLI 插件。它把计划、验证、恢复和基础安全检查做成固定命令，避免每次都靠临时对话记住流程。
 
@@ -272,6 +272,8 @@ node scripts/cli.js verify
 这个仓库是 CodeBuddy 插件包，不是通用插件框架。
 
 ---
+
+<a id="english"></a>
 
 # Harness for CodeBuddy
 
