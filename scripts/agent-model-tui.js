@@ -20,17 +20,56 @@ const agents = [
 ];
 const confirmTab = { key: "confirm", label: "确认" };
 const tabs = [...agents, confirmTab];
+const MODEL_METADATA = {
+  "claude-sonnet-4.6": { name: "Claude-Sonnet-4.6", credits: "x2.04 credits" },
+  "claude-sonnet-4.6-1m": { name: "Claude-Sonnet-4.6-1M", credits: "x2.00 credits" },
+  "claude-4.5": { name: "Claude-Sonnet-4.5", credits: "x2.20 credits" },
+  "claude-opus-4.6": { name: "Claude-Opus-4.6", credits: "x3.40 credits" },
+  "claude-opus-4.6-1m": { name: "Claude-Opus-4.6-1M", credits: "x3.33 credits" },
+  "claude-opus-4.5": { name: "Claude-Opus-4.5", credits: "x3.40 credits" },
+  "claude-haiku-4.5": { name: "Claude-Haiku-4.5", credits: "x0.67 credits" },
+  "gemini-3.1-pro": { name: "Gemini-3.1-Pro", credits: "x1.36 credits" },
+  "gemini-3.0-flash": { name: "Gemini-3.0-Flash", credits: "x0.33 credits" },
+  "gemini-2.5-pro": { name: "Gemini-2.5-Pro", credits: "x0.95 credits" },
+  "gemini-3.1-flash-lite": { name: "Gemini-3.1-flash-lite", credits: "x0.17 credits" },
+  "gpt-5.4": { name: "GPT-5.4", credits: "x1.65 credits" },
+  "gpt-5.2": { name: "GPT-5.2", credits: "x1.33 credits" },
+  "gpt-5.3-codex": { name: "GPT-5.3-Codex", credits: "x1.35 credits" },
+  "gpt-5.2-codex": { name: "GPT-5.2-Codex", credits: "x1.33 credits" },
+  "gpt-5.1": { name: "GPT-5.1", credits: "x0.95 credits" },
+  "gpt-5.1-codex": { name: "GPT-5.1-Codex", credits: "x0.95 credits" },
+  "gpt-5.1-codex-max": { name: "GPT-5.1-Codex-Max", credits: "x0.95 credits" },
+  "gpt-5.1-codex-mini": { name: "GPT-5.1-Codex-Mini", credits: "x0.19 credits" },
+  "kimi-k2.5": { name: "Kimi-K2.5", credits: "x0.00 credits" },
+  "kimi-k2-thinking": { name: "Kimi-K2-Thinking", credits: "x0.46 credits" },
+  "glm-5.1": { name: "GLM-5.1", credits: "x1.06 credits" },
+  "glm-5.0": { name: "GLM-5.0", credits: "x0.34 credits" },
+  "glm-5.0-turbo": { name: "GLM-5.0-Turbo", credits: "x0.95 credits" },
+  "glm-5v-turbo": { name: "GLM-5v-Turbo", credits: "x0.95 credits" },
+  "glm-4.7": { name: "GLM-4.7", credits: "x0.00 credits" },
+  "glm-4.6": { name: "GLM-4.6", credits: "x0.00 credits" },
+  "glm-4.6v": { name: "GLM-4.6V", credits: "x0.00 credits" },
+  "minimax-m2.5": { name: "MiniMax-M2.5", credits: "x0.17 credits" },
+  "deepseek-v3-2-volc": { name: "DeepSeek-V3.2", credits: "x0.00 credits" },
+  "hunyuan-2.0-thinking-ioa": { name: "Hunyuan-2.0-Thinking", credits: "x0.00 credits" },
+  "hunyuan-2.0-instruct-ioa": { name: "Hunyuan-2.0-Instruct", credits: "x0.00 credits" }
+};
 
 function optionsFor(agent) {
   const knownOptions = KNOWN_AGENT_MODELS.map((model) => ({
     value: model,
-    label: model === agent.fallback ? `${model}（推荐）` : model,
+    label: model === agent.fallback ? `${modelLabel(model)}（推荐）` : modelLabel(model),
     hint: model === agent.fallback ? "按当前 agent 职责选择的默认模型" : modelHint(model)
   }));
   return [
     ...knownOptions,
     { value: "__custom__", label: "输入自定义模型", hint: "手动输入一个准确的 CodeBuddy model id" }
   ];
+}
+
+function modelLabel(model) {
+  const metadata = MODEL_METADATA[model] || { name: model, credits: "credits unknown" };
+  return `${metadata.name.padEnd(24)} 【${model}】 ${metadata.credits ? `(${metadata.credits})` : ""}`.trimEnd();
 }
 
 function modelHint(model) {

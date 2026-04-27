@@ -45,7 +45,7 @@ const KNOWN_AGENT_MODELS = [
   "glm-4.6",
   "glm-4.6v",
   "minimax-m2.5",
-  "deepseek-v3.2-volc",
+  "deepseek-v3-2-volc",
   "hunyuan-2.0-thinking-ioa",
   "hunyuan-2.0-instruct-ioa"
 ];
