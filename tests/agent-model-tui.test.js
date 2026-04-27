@@ -53,6 +53,18 @@ test("agent model TUI accepts role defaults through the confirm page", { skip: !
   });
 });
 
+test("agent model TUI renders Chinese boxed tabs", { skip: !hasScriptCommand() }, () => {
+  const source = path.join(__dirname, "..");
+  const output = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "harness-agent-models-")), "models.env");
+  const result = runTuiInPty(source, output, "\u001b");
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /┌/);
+  assert.match(result.stdout, /为 Harness 规划 agent 选择模型/);
+  assert.match(result.stdout, /确认/);
+  assert.match(result.stdout, /跳过模型配置/);
+});
+
 test("agent model TUI escape writes skip mode", { skip: !hasScriptCommand() }, () => {
   const source = path.join(__dirname, "..");
   const output = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "harness-agent-models-")), "models.env");

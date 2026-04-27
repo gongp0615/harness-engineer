@@ -54,7 +54,7 @@ print_question_header() {
 }
 
 print_model_summary() {
-  echo "Harness agent model configuration:"
+  echo "Harness agent 模型配置:"
   echo "  planner : ${HARNESS_AGENT_MODEL_PLANNER:-${HARNESS_AGENT_MODEL:-$default_agent_model}}"
   echo "  executor: ${HARNESS_AGENT_MODEL_EXECUTOR:-${HARNESS_AGENT_MODEL:-$default_agent_model}}"
   echo "  verifier: ${HARNESS_AGENT_MODEL_VERIFIER:-${HARNESS_AGENT_MODEL:-$default_agent_model}}"
@@ -86,10 +86,10 @@ done
 if [ "$has_agent_model_env" = "0" ] && harness_has_tty; then
   configure_agent_models_interactive
   if [ "$agent_model_preset" = "skip" ]; then
-    echo "Harness agent model configuration: inherit CodeBuddy defaults"
+    echo "Harness agent 模型配置: 继承 CodeBuddy 默认值"
   else
     echo
-    echo "Selected preset: ${agent_model_preset:-default}"
+    echo "已选择模型配置: ${agent_model_preset:-default}"
     print_model_summary
   fi
 fi
