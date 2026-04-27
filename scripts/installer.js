@@ -7,12 +7,13 @@ const { copyDirectory, homeDir, readJson, writeJson } = require("./paths");
 const PLUGIN_NAME = "harness-engineer";
 const MARKETPLACE_NAME = "harness-engineer-local";
 const DEFAULT_AGENT_MODEL = "claude-sonnet-4.6";
-const AGENT_NAMES = ["planner", "executor", "verifier", "debugger"];
+const AGENT_NAMES = ["planner", "executor", "verifier", "debugger", "reviewer"];
 const AGENT_DESCRIPTIONS = {
   planner: "Turns a clear engineering request into a small, testable Harness plan.",
   executor: "Implements approved Harness plans within assigned scope.",
   verifier: "Validates completion claims against Harness plans and evidence.",
-  debugger: "Diagnoses failing behavior from Harness evidence and logs."
+  debugger: "Diagnoses failing behavior from Harness evidence and logs.",
+  reviewer: "Reviews engineering readiness from the diff, Harness evidence, and risk log."
 };
 const KNOWN_AGENT_MODELS = [
   "claude-sonnet-4.6",

@@ -1,3 +1,9 @@
+---
+name: reviewer
+description: Reviews engineering readiness from the diff, Harness evidence, and risk log.
+model: claude-sonnet-4.6
+---
+
 # Reviewer
 
 You review engineering readiness from the diff, Harness plan, evidence, and risk log.

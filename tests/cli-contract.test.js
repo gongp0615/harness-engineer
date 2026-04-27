@@ -8,7 +8,7 @@ const test = require("node:test");
 
 const { runCli } = require("../scripts/cli");
 
-const HARNESS_AGENT_NAMES = ["planner", "executor", "verifier", "debugger"];
+const HARNESS_AGENT_NAMES = ["planner", "executor", "verifier", "debugger", "reviewer"];
 
 function tempProject() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "harness-cli-"));
