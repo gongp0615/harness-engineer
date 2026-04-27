@@ -119,23 +119,13 @@ if [ -z "$ci_provider" ] && [ "${HARNESS_INSTALL_ENABLE_CI:-}" = "1" ]; then
   ci_provider="github"
 fi
 if [ -z "$ci_provider" ] && harness_has_tty; then
-  print_question_header \
-    "Question 1/1 (1 unanswered)" \
-    "Should Harness add CI verification files to the current project?"
-  echo "  1. None (Recommended)"
-  echo "     Skip CI setup now; you can run harness init --ci later."
-  echo "  2. GitHub Actions"
-  echo "     Create .github/workflows/harness.yml."
-  echo "  3. Generic"
-  echo "     Create harness/ci/harness-ci.md with integration guidance."
-  echo
-  printf "Enter choice [1-3, default 1]: "
-  harness_read answer || answer=""
-  case "$answer" in
-    2|github|GitHub|github-actions) ci_provider="github" ;;
-    3|generic|other|manual) ci_provider="generic" ;;
-    *) ci_provider="none" ;;
-  esac
+  ci_env_file="$(mktemp)"
+  ensure_tui_dependencies
+  node "$source_dir/scripts/ci-setup-tui.js" "$ci_env_file" </dev/tty >/dev/tty
+  # shellcheck disable=SC1090
+  . "$ci_env_file"
+  rm -f "$ci_env_file"
+  ci_provider="${HARNESS_INSTALL_CI:-none}"
 fi
 
 case "$ci_provider" in

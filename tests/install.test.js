@@ -243,6 +243,32 @@ test("install script TUI default path configures all Harness agent models", { sk
   assert.equal(readFrontmatter(path.join(pluginDir, "agents", "reviewer.md")).data.model, "gpt-5.4");
 });
 
+test("install script CI TUI default skips CI setup", { skip: !hasScriptCommand() }, () => {
+  const source = path.join(__dirname, "..");
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), "harness-install-ci-tui-project-"));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "harness-install-ci-tui-home-"));
+  const binDir = path.join(home, ".local", "bin");
+  const installScript = path.join(source, "install.sh");
+  const command = [
+    `CODEBUDDY_HOME=${shellQuote(home)}`,
+    `HARNESS_BIN_DIR=${shellQuote(binDir)}`,
+    "HARNESS_AGENT_MODEL_MODE=skip",
+    "bash",
+    shellQuote(installScript)
+  ].join(" ");
+  const feed = "{ sleep 0.5; printf '\\r'; sleep 0.2; }";
+  const result = require("node:child_process").spawnSync("bash", ["-lc", `${feed} | script -qfec ${shellQuote(`stty cols 120 rows 30; ${command}`)} /dev/null`], {
+    cwd: project,
+    encoding: "utf8",
+    stdio: ["pipe", "pipe", "pipe"]
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /是否为当前项目添加 Harness CI 验证文件/);
+  assert.equal(fs.existsSync(path.join(project, ".github", "workflows", "harness.yml")), false);
+  assert.equal(fs.existsSync(path.join(project, "harness", "ci", "harness-ci.md")), false);
+});
+
 test("install script can create generic CI setup from environment choice", () => {
   const source = path.join(__dirname, "..");
   const project = fs.mkdtempSync(path.join(os.tmpdir(), "harness-install-generic-ci-"));
