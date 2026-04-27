@@ -227,9 +227,9 @@ test("install script TUI default path configures all Harness agent models", { sk
     "bash",
     shellQuote(installScript)
   ].join(" ");
-  const result = require("node:child_process").spawnSync("script", ["-qfec", command, "/dev/null"], {
+  const feed = "{ sleep 0.5; printf '\\r'; sleep 0.1; printf '\\r'; sleep 0.1; printf '\\r'; sleep 0.1; printf '\\r'; sleep 0.1; printf '\\r'; sleep 0.1; printf '\\r'; sleep 0.2; }";
+  const result = require("node:child_process").spawnSync("bash", ["-lc", `${feed} | script -qfec ${shellQuote(`stty cols 120 rows 40; ${command}`)} /dev/null`], {
     cwd: project,
-    input: "\t\t\t\t\t\r",
     encoding: "utf8",
     stdio: ["pipe", "pipe", "pipe"]
   });

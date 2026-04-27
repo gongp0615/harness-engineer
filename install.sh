@@ -62,9 +62,19 @@ print_model_summary() {
   echo "  reviewer: ${HARNESS_AGENT_MODEL_REVIEWER:-${HARNESS_AGENT_MODEL:-$default_agent_model}}"
 }
 
+ensure_tui_dependencies() {
+  if [ -d "$source_dir/node_modules/@clack/prompts" ] && [ -d "$source_dir/node_modules/picocolors" ]; then
+    return 0
+  fi
+  need npm
+  echo "Installing Harness installer TUI dependencies..."
+  (cd "$source_dir" && npm install --omit=dev --no-audit --no-fund)
+}
+
 configure_agent_models_interactive() {
   local env_file
   env_file="$(mktemp)"
+  ensure_tui_dependencies
   node "$source_dir/scripts/agent-model-tui.js" "$env_file" </dev/tty >/dev/tty
   # shellcheck disable=SC1090
   . "$env_file"
