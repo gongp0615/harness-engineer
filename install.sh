@@ -15,6 +15,19 @@ need() {
 need git
 need node
 
+harness_has_tty() {
+  [ -r /dev/tty ] && [ -w /dev/tty ]
+}
+
+harness_read() {
+  local __var_name="$1"
+  if harness_has_tty; then
+    IFS= read -r "$__var_name" </dev/tty || return 1
+    return 0
+  fi
+  IFS= read -r "$__var_name" || return 1
+}
+
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" >/dev/null 2>&1 && pwd || true)"
 if [ -n "$script_dir" ] && [ -f "$script_dir/.codebuddy-plugin/plugin.json" ]; then
   source_dir="$script_dir"
@@ -47,7 +60,7 @@ choose_agent_model() {
     i=$((i + 1))
   done
   printf "Choose number or enter a custom model id [default %s]: " "$fallback" >&2
-  read -r answer || answer=""
+  harness_read answer || answer=""
   if [ -z "$answer" ]; then
     printf "%s" "$fallback"
     return
@@ -66,13 +79,13 @@ for var_name in HARNESS_AGENT_MODEL HARNESS_AGENT_MODEL_MODE HARNESS_AGENT_MODEL
   fi
 done
 
-if [ "$has_agent_model_env" = "0" ] && [ -t 0 ]; then
+if [ "$has_agent_model_env" = "0" ] && harness_has_tty; then
   echo "Configure Harness plugin agent models:"
   echo "  1) yes - use ${default_agent_model} for all Harness agents"
   echo "  2) customize each agent"
   echo "  3) skip model configuration"
   printf "Choose [1/2/3, default 1]: "
-  read -r model_answer || model_answer=""
+  harness_read model_answer || model_answer=""
   case "$model_answer" in
     2|custom|customize|customize-each|customize\ each\ agent)
       export HARNESS_AGENT_MODEL_MODE="custom"
@@ -108,13 +121,13 @@ ci_provider="${HARNESS_INSTALL_CI:-}"
 if [ -z "$ci_provider" ] && [ "${HARNESS_INSTALL_ENABLE_CI:-}" = "1" ]; then
   ci_provider="github"
 fi
-if [ -z "$ci_provider" ] && [ -t 0 ]; then
+if [ -z "$ci_provider" ] && harness_has_tty; then
   echo "Select Harness CI setup for the current directory:"
   echo "  1) none - skip CI setup"
   echo "  2) github - create .github/workflows/harness.yml"
   echo "  3) generic - create harness/ci/harness-ci.md integration guide"
   printf "Choose [1/2/3, default 1]: "
-  read -r answer || answer=""
+  harness_read answer || answer=""
   case "$answer" in
     2|github|GitHub|github-actions) ci_provider="github" ;;
     3|generic|other|manual) ci_provider="generic" ;;
